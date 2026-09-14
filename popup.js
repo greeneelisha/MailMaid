@@ -1,75 +1,138 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>MailMaid</title>
-  <link rel="stylesheet" href="style.css">
-</head>
+const cleanButton = document.getElementById("clean");
+const intervalInput = document.getElementById("interval");
+const autoClean = document.getElementById("autoClean");
+const status = document.getElementById("status");
+const settingsButton = document.getElementById("settings");
+const processedCount = document.getElementById("processedCount");
+const filterCount = document.getElementById("filterCount");
+const errorBox = document.getElementById("error");
 
-<body>
+function showError(message) {
+  if (!message) {
+    errorBox.style.display = "none";
+    errorBox.textContent = "";
+    return;
+  }
 
-  <div class="container">
+  errorBox.style.display = "block";
+  errorBox.textContent = message;
+}
 
-    <div class="header">
-      <h1>MailMaid</h1>
-      <p>Clean up your Gmail</p>
-    </div>
+function loadSettings() {
+  chrome.storage.local.get(
+    [
+      "interval",
+      "autoClean",
+      "filterCount",
+      "processedCount",
+      "lastError",
+      "status"
+    ],
+    (data) => {
+      intervalInput.value = data.interval || 1;
 
-    <button id="clean" class="clean-button">
-      Clean Now
-    </button>
+      autoClean.checked = Boolean(data.autoClean);
 
-    <div class="status-card">
-      <div class="status-title">Status</div>
-      <div id="status">Ready</div>
-    </div>
+      const count =
+        typeof data.processedCount === "number"
+          ? data.processedCount
+          : 8337;
 
-    <div class="stats">
+      processedCount.textContent = count.toLocaleString();
 
-      <div class="stat">
-        <span id="processedCount">8,337</span>
-        <small>Messages scanned</small>
-      </div>
+      filterCount.textContent = data.filterCount || 0;
 
-      <div class="stat">
-        <span id="filterCount">0</span>
-        <small>Rules</small>
-      </div>
+      status.textContent = data.status || "Ready";
 
-    </div>
+      showError(data.lastError || "");
+    }
+  );
+}
 
-    <div id="error" class="error"></div>
+function saveSettings() {
+  const interval = Number(intervalInput.value);
+  const enabled = autoClean.checked;
 
-    <div class="settings-section">
+  chrome.storage.local.set(
+    {
+      interval: interval,
+      autoClean: enabled
+    },
+    () => {
+      chrome.runtime.sendMessage({
+        type: "UPDATE_ALARM"
+      });
+    }
+  );
+}
 
-      <label for="interval">
-        Automatic cleaning
-      </label>
+cleanButton.addEventListener("click", () => {
+  cleanButton.disabled = true;
 
-      <select id="interval">
-        <option value="1">Every minute</option>
-        <option value="5">Every 5 minutes</option>
-        <option value="15">Every 15 minutes</option>
-        <option value="30">Every 30 minutes</option>
-        <option value="60">Every hour</option>
-        <option value="360">Every 6 hours</option>
-        <option value="1440">Every day</option>
-      </select>
+  status.textContent = "Starting...";
 
-      <label class="checkbox-row">
-        <input type="checkbox" id="autoClean">
-        <span>Enable automatic cleaning</span>
-      </label>
+  showError("");
 
-    </div>
+  chrome.runtime.sendMessage(
+    {
+      type: "CLEAN_NOW"
+    },
+    (response) => {
+      if (chrome.runtime.lastError) {
+        status.textContent = "Error";
 
-    <button id="settings" class="settings-button">
-      Settings
-    </button>
+        showError(chrome.runtime.lastError.message);
 
-  </div>
+        cleanButton.disabled = false;
 
-  <script src="popup.js"></script>
+        return;
+      }
 
-</body>
-</html>
+      if (response && response.error) {
+        status.textContent = "Error";
+
+        showError(response.error);
+
+        cleanButton.disabled = false;
+
+        return;
+      }
+
+      status.textContent = "Working...";
+
+      cleanButton.disabled = false;
+    }
+  );
+});
+
+intervalInput.addEventListener("change", saveSettings);
+
+autoClean.addEventListener("change", saveSettings);
+
+settingsButton.addEventListener("click", () => {
+  chrome.runtime.openOptionsPage();
+});
+
+chrome.storage.onChanged.addListener((changes) => {
+  if (changes.processedCount) {
+    processedCount.textContent = Number(
+      changes.processedCount.newValue || 0
+    ).toLocaleString();
+  }
+
+  if (changes.filterCount) {
+    filterCount.textContent =
+      changes.filterCount.newValue || 0;
+  }
+
+  if (changes.status) {
+    status.textContent =
+      changes.status.newValue || "Ready";
+  }
+
+  if (changes.lastError) {
+    showError(changes.lastError.newValue || "");
+  }
+});
+
+loadSettings();
