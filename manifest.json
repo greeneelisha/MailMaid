@@ -14,6 +14,10 @@
     "alarms"
   ],
 
+  "host_permissions": [
+    "https://gmail.googleapis.com/*"
+  ],
+
   "oauth2": {
     "client_id": "160877377017-1b8cuit2ne245lq3ejr02thg6pe5ffjq.apps.googleusercontent.com",
     "scopes": [

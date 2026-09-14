@@ -212,6 +212,14 @@ function containsText(value, search) {
         .indexOf(String(search).toLowerCase()) !== -1;
 }
 
+function containsAnyText(value, searches) {
+    return String(searches || "")
+        .split(",")
+        .some(function(search) {
+            return containsText(value, search.trim());
+        });
+}
+
 function ruleMatches(rule, data) {
     if (!rule) {
         return false;
@@ -219,56 +227,56 @@ function ruleMatches(rule, data) {
 
     if (
         rule.fromContains &&
-        !containsText(data.from, rule.fromContains)
+        !containsAnyText(data.from, rule.fromContains)
     ) {
         return false;
     }
 
     if (
         rule.fromNotContains &&
-        containsText(data.from, rule.fromNotContains)
+        containsAnyText(data.from, rule.fromNotContains)
     ) {
         return false;
     }
 
     if (
         rule.toContains &&
-        !containsText(data.to, rule.toContains)
+        !containsAnyText(data.to, rule.toContains)
     ) {
         return false;
     }
 
     if (
         rule.toNotContains &&
-        containsText(data.to, rule.toNotContains)
+        containsAnyText(data.to, rule.toNotContains)
     ) {
         return false;
     }
 
     if (
         rule.subjectContains &&
-        !containsText(data.subject, rule.subjectContains)
+        !containsAnyText(data.subject, rule.subjectContains)
     ) {
         return false;
     }
 
     if (
         rule.subjectNotContains &&
-        containsText(data.subject, rule.subjectNotContains)
+        containsAnyText(data.subject, rule.subjectNotContains)
     ) {
         return false;
     }
 
     if (
         rule.messageContains &&
-        !containsText(data.body, rule.messageContains)
+        !containsAnyText(data.body, rule.messageContains)
     ) {
         return false;
     }
 
     if (
         rule.messageNotContains &&
-        containsText(data.body, rule.messageNotContains)
+        containsAnyText(data.body, rule.messageNotContains)
     ) {
         return false;
     }
@@ -310,7 +318,9 @@ async function modifyMessage(token, messageId, addLabelIds, removeLabelIds) {
 }
 
 async function applyRule(token, messageId, rule) {
-    if (rule.archive) {
+    var actions = rule.actions || rule;
+
+    if (actions.archive) {
         await modifyMessage(
             token,
             messageId,
@@ -319,7 +329,7 @@ async function applyRule(token, messageId, rule) {
         );
     }
 
-    if (rule.markRead) {
+    if (actions.markRead) {
         await modifyMessage(
             token,
             messageId,
@@ -328,7 +338,7 @@ async function applyRule(token, messageId, rule) {
         );
     }
 
-    if (rule.star) {
+    if (actions.star) {
         await modifyMessage(
             token,
             messageId,
@@ -337,7 +347,7 @@ async function applyRule(token, messageId, rule) {
         );
     }
 
-    if (rule.neverSpam) {
+    if (actions.neverSpam) {
         await modifyMessage(
             token,
             messageId,
@@ -346,7 +356,7 @@ async function applyRule(token, messageId, rule) {
         );
     }
 
-    if (rule.important) {
+    if (actions.important) {
         await modifyMessage(
             token,
             messageId,
@@ -355,7 +365,7 @@ async function applyRule(token, messageId, rule) {
         );
     }
 
-    if (rule.notImportant) {
+    if (actions.notImportant) {
         await modifyMessage(
             token,
             messageId,
@@ -364,7 +374,7 @@ async function applyRule(token, messageId, rule) {
         );
     }
 
-    if (rule.delete) {
+    if (actions.delete) {
         await modifyMessage(
             token,
             messageId,
@@ -470,7 +480,10 @@ async function runRules() {
                 for (var r = 0; r < rules.length; r++) {
                     var rule = rules[r];
 
-                    if (ruleMatches(rule, data)) {
+                    if (
+                        rule.enabled !== false &&
+                        ruleMatches(rule, data)
+                    ) {
                         matchedThisScan++;
 
                         await applyRule(
