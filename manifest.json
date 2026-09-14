@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "MailMaid",
+  "description": "Automatically clean your Gmail using your own rules.",
+  "version": "1.0.0",
+
+  "action": {
+    "default_popup": "popup.html"
+  },
+
+  "permissions": [
+    "identity",
+    "storage",
+    "alarms"
+  ],
+
+  "oauth2": {
+    "client_id": "160877377017-1b8cuit2ne245lq3ejr02thg6pe5ffjq.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/gmail.modify"
+    ]
+  },
+
+  "background": {
+    "service_worker": "background.js"
+  },
+
+  "options_page": "settings.html"
+}
