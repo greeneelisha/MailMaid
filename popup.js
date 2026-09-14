@@ -1,205 +1,75 @@
-const cleanButton = document.getElementById("clean");
-const intervalInput = document.getElementById("interval");
-const autoClean = document.getElementById("autoClean");
-const status = document.getElementById("status");
-const settingsButton = document.getElementById("settings");
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>MailMaid</title>
+  <link rel="stylesheet" href="style.css">
+</head>
 
-const processedCount =
-  document.getElementById("processedCount");
+<body>
 
-const filterCount =
-  document.getElementById("filterCount");
+  <div class="container">
 
-const errorBox =
-  document.getElementById("error");
+    <div class="header">
+      <h1>MailMaid</h1>
+      <p>Clean up your Gmail</p>
+    </div>
 
+    <button id="clean" class="clean-button">
+      Clean Now
+    </button>
 
-function showError(message) {
-  if (!message) {
-    errorBox.style.display = "none";
-    errorBox.textContent = "";
-    return;
-  }
+    <div class="status-card">
+      <div class="status-title">Status</div>
+      <div id="status">Ready</div>
+    </div>
 
-  errorBox.style.display = "block";
-  errorBox.textContent = message;
-}
+    <div class="stats">
 
+      <div class="stat">
+        <span id="processedCount">8,337</span>
+        <small>Messages scanned</small>
+      </div>
 
-function loadSettings() {
+      <div class="stat">
+        <span id="filterCount">0</span>
+        <small>Rules</small>
+      </div>
 
-  chrome.storage.local.get(
-    [
-      "interval",
-      "autoClean",
-      "filterCount",
-      "processedCount",
-      "lastError",
-      "status"
-    ],
-    (data) => {
+    </div>
 
-      intervalInput.value =
-        data.interval || 1;
+    <div id="error" class="error"></div>
 
-      autoClean.checked =
-        Boolean(data.autoClean);
+    <div class="settings-section">
 
-      const count =
-        typeof data.processedCount === "number"
-          ? data.processedCount
-          : 8337;
+      <label for="interval">
+        Automatic cleaning
+      </label>
 
-      processedCount.textContent =
-        count.toLocaleString();
+      <select id="interval">
+        <option value="1">Every minute</option>
+        <option value="5">Every 5 minutes</option>
+        <option value="15">Every 15 minutes</option>
+        <option value="30">Every 30 minutes</option>
+        <option value="60">Every hour</option>
+        <option value="360">Every 6 hours</option>
+        <option value="1440">Every day</option>
+      </select>
 
-      filterCount.textContent =
-        data.filterCount || 0;
+      <label class="checkbox-row">
+        <input type="checkbox" id="autoClean">
+        <span>Enable automatic cleaning</span>
+      </label>
 
-      status.textContent =
-        data.status || "Ready";
+    </div>
 
-      showError(
-        data.lastError || ""
-      );
-    }
-  );
-}
+    <button id="settings" class="settings-button">
+      Settings
+    </button>
 
+  </div>
 
-function saveSettings() {
+  <script src="popup.js"></script>
 
-  const interval =
-    Number(intervalInput.value);
-
-  const enabled =
-    autoClean.checked;
-
-  chrome.storage.local.set(
-    {
-      interval: interval,
-      autoClean: enabled
-    },
-    () => {
-
-      chrome.runtime.sendMessage({
-        type: "UPDATE_ALARM"
-      });
-
-    }
-  );
-}
-
-
-cleanButton.addEventListener(
-  "click",
-  () => {
-
-    cleanButton.disabled = true;
-
-    status.textContent =
-      "Starting...";
-
-    showError("");
-
-    chrome.runtime.sendMessage(
-      {
-        type: "CLEAN_NOW"
-      },
-      (response) => {
-
-        if (chrome.runtime.lastError) {
-
-          status.textContent =
-            "Error";
-
-          showError(
-            chrome.runtime.lastError.message
-          );
-
-          cleanButton.disabled = false;
-
-          return;
-        }
-
-        if (
-          response &&
-          response.error
-        ) {
-
-          status.textContent =
-            "Error";
-
-          showError(
-            response.error
-          );
-
-          cleanButton.disabled = false;
-
-          return;
-        }
-
-        status.textContent =
-          "Working...";
-
-        cleanButton.disabled = false;
-      }
-    );
-  }
-);
-
-
-intervalInput.addEventListener(
-  "change",
-  saveSettings
-);
-
-
-autoClean.addEventListener(
-  "change",
-  saveSettings
-);
-
-
-settingsButton.addEventListener(
-  "click",
-  () => {
-    chrome.runtime.openOptionsPage();
-  }
-);
-
-
-chrome.storage.onChanged.addListener(
-  (changes) => {
-
-    if (changes.processedCount) {
-
-      processedCount.textContent =
-        Number(
-          changes.processedCount.newValue || 0
-        ).toLocaleString();
-    }
-
-    if (changes.filterCount) {
-
-      filterCount.textContent =
-        changes.filterCount.newValue || 0;
-    }
-
-    if (changes.status) {
-
-      status.textContent =
-        changes.status.newValue || "Ready";
-    }
-
-    if (changes.lastError) {
-
-      showError(
-        changes.lastError.newValue || ""
-      );
-    }
-  }
-);
-
-
-loadSettings();
+</body>
+</html>

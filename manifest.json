@@ -1,159 +1,29 @@
-* {
-  box-sizing: border-box;
-}
-
-body {
-  margin: 0;
-  width: 350px;
-  font-family: Arial, sans-serif;
-  background: #f5f7fa;
-  color: #202124;
-}
-
-.container {
-  padding: 20px;
-}
-
-.header {
-  margin-bottom: 20px;
-}
-
-h1 {
-  margin: 0;
-  font-size: 25px;
-}
-
-.header p {
-  margin: 5px 0 0;
-  color: #6b7280;
-  font-size: 13px;
-}
-
-.clean-button {
-  width: 100%;
-  border: 0;
-  border-radius: 10px;
-  padding: 13px;
-  font-size: 16px;
-  font-weight: bold;
-  cursor: pointer;
-  background: #1a73e8;
-  color: white;
-}
-
-.clean-button:hover {
-  background: #1765cc;
-}
-
-.clean-button:disabled {
-  background: #9aa0a6;
-  cursor: not-allowed;
-}
-
-.status-card {
-  background: white;
-  border-radius: 10px;
-  padding: 14px;
-  margin-top: 15px;
-  border: 1px solid #e0e3e7;
-}
-
-.status-title {
-  font-size: 12px;
-  color: #777;
-  margin-bottom: 5px;
-}
-
-#status {
-  font-size: 14px;
-  font-weight: bold;
-}
-
-.stats {
-  display: flex;
-  gap: 10px;
-  margin-top: 10px;
-}
-
-.stat {
-  flex: 1;
-  background: white;
-  border: 1px solid #e0e3e7;
-  border-radius: 10px;
-  padding: 12px;
-  text-align: center;
-}
-
-.stat span {
-  display: block;
-  font-size: 20px;
-  font-weight: bold;
-}
-
-.stat small {
-  color: #777;
-  font-size: 11px;
-}
-
-.settings-section {
-  margin-top: 18px;
-  background: white;
-  border: 1px solid #e0e3e7;
-  border-radius: 10px;
-  padding: 14px;
-}
-
-.settings-section > label:first-child {
-  display: block;
-  font-size: 13px;
-  font-weight: bold;
-  margin-bottom: 7px;
-}
-
-select {
-  width: 100%;
-  padding: 9px;
-  border: 1px solid #ccc;
-  border-radius: 7px;
-  background: white;
-}
-
-.checkbox-row {
-  display: flex !important;
-  align-items: center;
-  gap: 8px;
-  margin-top: 13px;
-  margin-bottom: 0 !important;
-  font-weight: normal !important;
-  font-size: 13px;
-}
-
-.checkbox-row input {
-  width: 16px;
-  height: 16px;
-}
-
-.settings-button {
-  width: 100%;
-  margin-top: 12px;
-  padding: 10px;
-  border: 1px solid #ccc;
-  background: white;
-  border-radius: 8px;
-  cursor: pointer;
-}
-
-.settings-button:hover {
-  background: #f1f3f4;
-}
-
-.error {
-  display: none;
-  margin-top: 10px;
-  padding: 10px;
-  border-radius: 8px;
-  background: #fde8e8;
-  color: #b42318;
-  font-size: 12px;
-  word-break: break-word;
+{
+  "manifest_version": 3,
+  "name": "MailMaid",
+  "short_name": "MailMaid",
+  "version": "1.0.0",
+  "description": "Clean and organize existing Gmail messages using custom rules.",
+  "permissions": [
+    "identity",
+    "storage",
+    "alarms"
+  ],
+  "host_permissions": [
+    "https://gmail.googleapis.com/*"
+  ],
+  "oauth2": {
+    "client_id": "160877377017-1b8cuit2ne245lq3ejr02thg6pe5ffjq.apps.googleusercontent.com",
+    "scopes": [
+      "https://www.googleapis.com/auth/gmail.modify"
+    ]
+  },
+  "action": {
+    "default_title": "MailMaid",
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_page": "settings.html"
 }
