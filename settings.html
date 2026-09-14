@@ -1,29 +1,295 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <meta charset="UTF-8">
-    <title>Gmail Cleaner Settings</title>
-    <link rel="stylesheet" href="settings.css">
+  <meta charset="UTF-8">
+  <title>MailMaid Settings</title>
+  <link rel="stylesheet" href="settings.css">
 </head>
 
 <body>
 
-<div class="page">
+  <div class="page">
 
-    <h1>Gmail Cleaner Settings</h1>
-    <p class="subtitle">
-        Create rules for cleaning existing Gmail messages.
-    </p>
+    <header>
+      <h1>MailMaid</h1>
+      <p>Gmail cleaning rules</p>
+    </header>
 
     <div id="rules"></div>
 
     <button id="addRule" class="add-button">
-        + Add Rule
+      + Add Rule
     </button>
 
-</div>
+    <div class="bottom">
 
-<script src="settings.js"></script>
+      <button id="save" class="save-button">
+        Save Rules
+      </button>
+
+      <span id="saveStatus"></span>
+
+    </div>
+
+  </div>
+
+
+  <template id="ruleTemplate">
+
+    <div class="rule">
+
+      <div class="rule-header">
+
+        <h2>Rule</h2>
+
+        <button class="delete-rule">
+          Delete
+        </button>
+
+      </div>
+
+
+      <div class="conditions">
+
+        <h3>Conditions</h3>
+
+        <div class="comma-note">
+          comma separated
+        </div>
+
+
+        <label>
+          From contains
+        </label>
+
+        <input
+          class="fromContains"
+          type="text"
+        >
+
+
+        <label>
+          From doesn't contain
+        </label>
+
+        <input
+          class="fromNotContains"
+          type="text"
+        >
+
+
+        <label>
+          To contains
+        </label>
+
+        <input
+          class="toContains"
+          type="text"
+        >
+
+
+        <label>
+          To doesn't contain
+        </label>
+
+        <input
+          class="toNotContains"
+          type="text"
+        >
+
+
+        <label>
+          Subject contains
+        </label>
+
+        <input
+          class="subjectContains"
+          type="text"
+        >
+
+
+        <label>
+          Subject doesn't contain
+        </label>
+
+        <input
+          class="subjectNotContains"
+          type="text"
+        >
+
+
+        <label>
+          Message contains
+        </label>
+
+        <input
+          class="messageContains"
+          type="text"
+        >
+
+
+        <label>
+          Message doesn't contain
+        </label>
+
+        <input
+          class="messageNotContains"
+          type="text"
+        >
+
+      </div>
+
+
+      <div class="actions">
+
+        <h3>Actions</h3>
+
+
+        <label class="check">
+
+          <input
+            type="checkbox"
+            data-action="archive"
+          >
+
+          Skip the Inbox (Archive it)
+
+        </label>
+
+
+        <label class="check">
+
+          <input
+            type="checkbox"
+            data-action="read"
+          >
+
+          Mark as read
+
+        </label>
+
+
+        <label class="check">
+
+          <input
+            type="checkbox"
+            data-action="star"
+          >
+
+          Star it
+
+        </label>
+
+
+        <label>
+          Apply the label
+        </label>
+
+        <input
+          class="label"
+          type="text"
+        >
+
+
+        <label>
+          Forward it
+        </label>
+
+        <input
+          class="forward"
+          type="email"
+          placeholder="email@example.com"
+        >
+
+
+        <label class="check">
+
+          <input
+            type="checkbox"
+            data-action="delete"
+          >
+
+          Delete it
+
+        </label>
+
+
+        <label class="check">
+
+          <input
+            type="checkbox"
+            data-action="neverSpam"
+          >
+
+          Never send it to Spam
+
+        </label>
+
+
+        <label class="check">
+
+          <input
+            type="checkbox"
+            data-action="important"
+          >
+
+          Always mark it as important
+
+        </label>
+
+
+        <label class="check">
+
+          <input
+            type="checkbox"
+            data-action="notImportant"
+          >
+
+          Never mark it as important
+
+        </label>
+
+
+        <label>
+          Categorize as
+        </label>
+
+        <select class="category">
+
+          <option value="">
+            Don't change
+          </option>
+
+          <option value="CATEGORY_PERSONAL">
+            Primary
+          </option>
+
+          <option value="CATEGORY_SOCIAL">
+            Social
+          </option>
+
+          <option value="CATEGORY_PROMOTIONS">
+            Promotions
+          </option>
+
+          <option value="CATEGORY_UPDATES">
+            Updates
+          </option>
+
+          <option value="CATEGORY_FORUMS">
+            Forums
+          </option>
+
+        </select>
+
+      </div>
+
+    </div>
+
+  </template>
+
+
+  <script src="settings.js"></script>
 
 </body>
 </html>

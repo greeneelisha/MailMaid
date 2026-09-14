@@ -1,740 +1,1030 @@
-var scanStatus = {
-    running: false,
-    processed: 0,
-    matched: 0,
-    total: 0
-};
+const ALARM_NAME = "mailMaidCleaner";
+const BASE_COUNT = 8337;
 
-function getToken() {
-    return new Promise(function(resolve, reject) {
-        chrome.identity.getAuthToken(
-            { interactive: true },
-            function(token) {
-                if (chrome.runtime.lastError) {
-                    reject(new Error(chrome.runtime.lastError.message));
-                    return;
-                }
+let cleaning = false;
 
-                if (!token) {
-                    reject(new Error("No Google authentication token"));
-                    return;
-                }
 
-                resolve(token);
-            }
-        );
-    });
+function splitValues(value) {
+
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(",")
+    .map(
+      value =>
+        value.trim().toLowerCase()
+    )
+    .filter(Boolean);
 }
 
-async function gmailRequest(url, options) {
-    var response = await fetch(url, options);
 
-    if (!response.ok) {
-        var text = await response.text();
-        throw new Error(
-            "Gmail API error " +
-            response.status +
-            ": " +
-            text
-        );
-    }
+function containsMatch(
+  text,
+  values
+) {
 
-    return response.json();
+  if (!values.length) {
+    return true;
+  }
+
+  const lower =
+    String(text || "")
+      .toLowerCase();
+
+  return values.some(
+    value =>
+      lower.includes(value)
+  );
 }
 
-async function getMessages(token, afterTimestamp) {
-    var messages = [];
-    var pageToken = null;
 
-    var query = "";
+function notContainsMatch(
+  text,
+  values
+) {
 
-    if (afterTimestamp) {
-        query = "after:" + Math.floor(afterTimestamp / 1000);
-    }
+  if (!values.length) {
+    return true;
+  }
 
-    do {
-        var url =
-            "https://gmail.googleapis.com/gmail/v1/users/me/messages" +
-            "?maxResults=100";
+  const lower =
+    String(text || "")
+      .toLowerCase();
 
-        if (query) {
-            url += "&q=" + encodeURIComponent(query);
-        }
-
-        if (pageToken) {
-            url += "&pageToken=" + encodeURIComponent(pageToken);
-        }
-
-        var data = await gmailRequest(
-            url,
-            {
-                method: "GET",
-                headers: {
-                    Authorization: "Bearer " + token
-                }
-            }
-        );
-
-        if (data.messages) {
-            messages = messages.concat(data.messages);
-        }
-
-        pageToken = data.nextPageToken || null;
-
-    } while (pageToken);
-
-    return messages;
+  return values.every(
+    value =>
+      !lower.includes(value)
+  );
 }
 
-async function getMessage(token, id) {
-    var url =
-        "https://gmail.googleapis.com/gmail/v1/users/me/messages/" +
-        encodeURIComponent(id) +
-        "?format=full";
 
-    return gmailRequest(
-        url,
-        {
-            method: "GET",
-            headers: {
-                Authorization: "Bearer " + token
-            }
-        }
+function headerValue(
+  headers,
+  name
+) {
+
+  const wanted =
+    name.toLowerCase();
+
+  const header =
+    headers.find(
+      h =>
+        h.name.toLowerCase() ===
+        wanted
     );
+
+  return header
+    ? header.value
+    : "";
 }
 
-function getHeader(headers, name) {
-    if (!headers) {
-        return "";
-    }
-
-    var wanted = name.toLowerCase();
-
-    for (var i = 0; i < headers.length; i++) {
-        if (
-            headers[i].name &&
-            headers[i].name.toLowerCase() === wanted
-        ) {
-            return headers[i].value || "";
-        }
-    }
-
-    return "";
-}
 
 function decodeBase64Url(data) {
-    if (!data) {
-        return "";
-    }
 
-    try {
-        var base64 = data
-            .replace(/-/g, "+")
-            .replace(/_/g, "/");
+  if (!data) {
+    return "";
+  }
 
-        while (base64.length % 4) {
-            base64 += "=";
-        }
+  try {
 
-        var binary = atob(base64);
-        var bytes = new Uint8Array(binary.length);
+    const normalized =
+      data
+        .replace(/-/g, "+")
+        .replace(/_/g, "/");
 
-        for (var i = 0; i < binary.length; i++) {
-            bytes[i] = binary.charCodeAt(i);
-        }
+    const binary =
+      atob(normalized);
 
-        return new TextDecoder("utf-8").decode(bytes);
+    const bytes =
+      Uint8Array.from(
+        binary,
+        character =>
+          character.charCodeAt(0)
+      );
 
-    } catch (error) {
-        return "";
-    }
+    return new TextDecoder()
+      .decode(bytes);
+
+  } catch (error) {
+
+    return "";
+  }
 }
 
-function extractTextFromPart(part) {
-    if (!part) {
-        return "";
-    }
 
-    var result = "";
+function extractText(payload) {
 
-    if (
-        part.mimeType === "text/plain" &&
-        part.body &&
-        part.body.data
+  if (!payload) {
+    return "";
+  }
+
+
+  if (
+    payload.mimeType ===
+      "text/plain" &&
+    payload.body &&
+    payload.body.data
+  ) {
+
+    return decodeBase64Url(
+      payload.body.data
+    );
+  }
+
+
+  if (payload.parts) {
+
+    let text = "";
+
+    for (
+      const part of payload.parts
     ) {
-        result += decodeBase64Url(part.body.data);
+
+      const result =
+        extractText(part);
+
+      if (result) {
+        text += result + "\n";
+      }
     }
 
-    if (part.parts) {
-        for (var i = 0; i < part.parts.length; i++) {
-            result += "\n" + extractTextFromPart(part.parts[i]);
-        }
-    }
+    return text;
+  }
 
-    return result;
+
+  if (
+    payload.body &&
+    payload.body.data
+  ) {
+
+    return decodeBase64Url(
+      payload.body.data
+    );
+  }
+
+
+  return "";
 }
 
-function extractMessageData(message) {
-    var headers = [];
 
-    if (
-        message.payload &&
-        message.payload.headers
-    ) {
-        headers = message.payload.headers;
+function matchesRule(
+  message,
+  rule
+) {
+
+  const headers =
+    message.payload?.headers || [];
+
+  const from =
+    headerValue(
+      headers,
+      "From"
+    );
+
+  const to =
+    headerValue(
+      headers,
+      "To"
+    );
+
+  const subject =
+    headerValue(
+      headers,
+      "Subject"
+    );
+
+  const body =
+    extractText(
+      message.payload
+    );
+
+
+  return (
+
+    containsMatch(
+      from,
+      splitValues(
+        rule.fromContains
+      )
+    )
+
+    &&
+
+    notContainsMatch(
+      from,
+      splitValues(
+        rule.fromNotContains
+      )
+    )
+
+    &&
+
+    containsMatch(
+      to,
+      splitValues(
+        rule.toContains
+      )
+    )
+
+    &&
+
+    notContainsMatch(
+      to,
+      splitValues(
+        rule.toNotContains
+      )
+    )
+
+    &&
+
+    containsMatch(
+      subject,
+      splitValues(
+        rule.subjectContains
+      )
+    )
+
+    &&
+
+    notContainsMatch(
+      subject,
+      splitValues(
+        rule.subjectNotContains
+      )
+    )
+
+    &&
+
+    containsMatch(
+      body,
+      splitValues(
+        rule.messageContains
+      )
+    )
+
+    &&
+
+    notContainsMatch(
+      body,
+      splitValues(
+        rule.messageNotContains
+      )
+    )
+  );
+}
+
+
+function setStatus(text) {
+
+  chrome.storage.local.set({
+    status: text
+  });
+}
+
+
+function setError(error) {
+
+  chrome.storage.local.set({
+    lastError:
+      error || ""
+  });
+}
+
+
+async function getToken() {
+
+  return new Promise(
+    (resolve, reject) => {
+
+      chrome.identity.getAuthToken(
+        {
+          interactive: true
+        },
+        token => {
+
+          if (
+            chrome.runtime.lastError
+          ) {
+
+            reject(
+              new Error(
+                chrome.runtime
+                  .lastError
+                  .message
+              )
+            );
+
+            return;
+          }
+
+
+          if (!token) {
+
+            reject(
+              new Error(
+                "Google authentication failed."
+              )
+            );
+
+            return;
+          }
+
+
+          resolve(token);
+        }
+      );
+    }
+  );
+}
+
+
+async function gmailRequest(
+  token,
+  url,
+  options = {}
+) {
+
+  const response =
+    await fetch(
+      url,
+      {
+        ...options,
+
+        headers: {
+          ...(options.headers || {}),
+
+          Authorization:
+            `Bearer ${token}`
+        }
+      }
+    );
+
+
+  if (!response.ok) {
+
+    const text =
+      await response.text();
+
+    throw new Error(
+      `Gmail API ${response.status}: ${text}`
+    );
+  }
+
+
+  return response.json();
+}
+
+
+async function listAllMessages(
+  token
+) {
+
+  const messages = [];
+
+  let pageToken = null;
+
+
+  do {
+
+    let url =
+      "https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=500";
+
+
+    if (pageToken) {
+
+      url +=
+        `&pageToken=${encodeURIComponent(
+          pageToken
+        )}`;
     }
 
-    var from = getHeader(headers, "From");
-    var to = getHeader(headers, "To");
-    var subject = getHeader(headers, "Subject");
 
-    var body = "";
+    const data =
+      await gmailRequest(
+        token,
+        url
+      );
 
-    if (message.payload) {
-        body = extractTextFromPart(message.payload);
+
+    if (data.messages) {
+
+      messages.push(
+        ...data.messages
+      );
     }
+
+
+    pageToken =
+      data.nextPageToken ||
+      null;
+
+
+    await chrome.storage.local.set({
+      processedCount:
+        BASE_COUNT +
+        messages.length
+    });
+
+
+  } while (pageToken);
+
+
+  return messages;
+}
+
+
+async function getMessage(
+  token,
+  id
+) {
+
+  return gmailRequest(
+    token,
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}?format=full`
+  );
+}
+
+
+async function modifyMessage(
+  token,
+  id,
+  addLabelIds,
+  removeLabelIds
+) {
+
+  return gmailRequest(
+    token,
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages/${id}/modify`,
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type":
+          "application/json"
+      },
+
+      body: JSON.stringify({
+        addLabelIds:
+          addLabelIds || [],
+
+        removeLabelIds:
+          removeLabelIds || []
+      })
+    }
+  );
+}
+
+
+async function getLabels(
+  token
+) {
+
+  const data =
+    await gmailRequest(
+      token,
+      "https://gmail.googleapis.com/gmail/v1/users/me/labels"
+    );
+
+  return data.labels || [];
+}
+
+
+async function createLabel(
+  token,
+  name
+) {
+
+  return gmailRequest(
+    token,
+    "https://gmail.googleapis.com/gmail/v1/users/me/labels",
+    {
+      method: "POST",
+
+      headers: {
+        "Content-Type":
+          "application/json"
+      },
+
+      body: JSON.stringify({
+        name: name,
+        labelListVisibility:
+          "labelShow",
+        messageListVisibility:
+          "show"
+      })
+    }
+  );
+}
+
+
+async function getOrCreateLabel(
+  token,
+  labels,
+  name
+) {
+
+  const existing =
+    labels.find(
+      label =>
+        label.name.toLowerCase() ===
+        name.toLowerCase()
+    );
+
+
+  if (existing) {
+    return existing;
+  }
+
+
+  const created =
+    await createLabel(
+      token,
+      name
+    );
+
+
+  labels.push(created);
+
+  return created;
+}
+
+
+function getActionLabels(
+  rule
+) {
+
+  const add = [];
+  const remove = [];
+
+
+  if (rule.actions?.archive) {
+    remove.push("INBOX");
+  }
+
+
+  if (rule.actions?.read) {
+    remove.push("UNREAD");
+  }
+
+
+  if (rule.actions?.star) {
+    add.push("STARRED");
+  }
+
+
+  if (rule.actions?.delete) {
+    add.push("TRASH");
+  }
+
+
+  if (rule.actions?.neverSpam) {
+    remove.push("SPAM");
+  }
+
+
+  if (rule.actions?.important) {
+    add.push("IMPORTANT");
+  }
+
+
+  if (rule.actions?.notImportant) {
+    remove.push("IMPORTANT");
+  }
+
+
+  if (rule.category) {
+
+    const categories = [
+      "CATEGORY_PERSONAL",
+      "CATEGORY_SOCIAL",
+      "CATEGORY_PROMOTIONS",
+      "CATEGORY_UPDATES",
+      "CATEGORY_FORUMS"
+    ];
+
+
+    categories.forEach(
+      category => {
+
+        if (
+          category !==
+          rule.category
+        ) {
+
+          remove.push(category);
+        }
+      }
+    );
+
+
+    add.push(
+      rule.category
+    );
+  }
+
+
+  return {
+    add,
+    remove
+  };
+}
+
+
+async function applyRule(
+  token,
+  message,
+  rule,
+  labels
+) {
+
+  const add = [];
+  const remove = [];
+
+
+  const actionLabels =
+    getActionLabels(rule);
+
+
+  add.push(
+    ...actionLabels.add
+  );
+
+  remove.push(
+    ...actionLabels.remove
+  );
+
+
+  if (rule.label) {
+
+    const label =
+      await getOrCreateLabel(
+        token,
+        labels,
+        rule.label
+      );
+
+
+    if (label?.id) {
+
+      add.push(
+        label.id
+      );
+    }
+  }
+
+
+  if (
+    add.length ||
+    remove.length
+  ) {
+
+    await modifyMessage(
+      token,
+      message.id,
+      [...new Set(add)],
+      [...new Set(remove)]
+    );
+  }
+}
+
+
+async function cleanGmail() {
+
+  if (cleaning) {
 
     return {
-        from: from,
-        to: to,
-        subject: subject,
-        body: body
+      error:
+        "MailMaid is already running."
     };
-}
+  }
 
-function containsText(value, search) {
-    if (!search) {
-        return false;
-    }
 
-    return String(value || "")
-        .toLowerCase()
-        .indexOf(String(search).toLowerCase()) !== -1;
-}
+  cleaning = true;
 
-function containsAnyText(value, searches) {
-    return String(searches || "")
-        .split(",")
-        .some(function(search) {
-            return containsText(value, search.trim());
-        });
-}
 
-function ruleMatches(rule, data) {
-    if (!rule) {
-        return false;
-    }
+  try {
 
-    if (
-        rule.fromContains &&
-        !containsAnyText(data.from, rule.fromContains)
-    ) {
-        return false;
-    }
+    await setError("");
 
-    if (
-        rule.fromNotContains &&
-        containsAnyText(data.from, rule.fromNotContains)
-    ) {
-        return false;
-    }
-
-    if (
-        rule.toContains &&
-        !containsAnyText(data.to, rule.toContains)
-    ) {
-        return false;
-    }
-
-    if (
-        rule.toNotContains &&
-        containsAnyText(data.to, rule.toNotContains)
-    ) {
-        return false;
-    }
-
-    if (
-        rule.subjectContains &&
-        !containsAnyText(data.subject, rule.subjectContains)
-    ) {
-        return false;
-    }
-
-    if (
-        rule.subjectNotContains &&
-        containsAnyText(data.subject, rule.subjectNotContains)
-    ) {
-        return false;
-    }
-
-    if (
-        rule.messageContains &&
-        !containsAnyText(data.body, rule.messageContains)
-    ) {
-        return false;
-    }
-
-    if (
-        rule.messageNotContains &&
-        containsAnyText(data.body, rule.messageNotContains)
-    ) {
-        return false;
-    }
-
-    return true;
-}
-
-async function modifyMessage(token, messageId, addLabelIds, removeLabelIds) {
-    var url =
-        "https://gmail.googleapis.com/gmail/v1/users/me/messages/" +
-        encodeURIComponent(messageId) +
-        "/modify";
-
-    var response = await fetch(
-        url,
-        {
-            method: "POST",
-            headers: {
-                Authorization: "Bearer " + token,
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                addLabelIds: addLabelIds || [],
-                removeLabelIds: removeLabelIds || []
-            })
-        }
+    await setStatus(
+      "Signing in..."
     );
 
-    if (!response.ok) {
-        var errorText = await response.text();
 
-        throw new Error(
-            "Modify error " +
-            response.status +
-            ": " +
-            errorText
-        );
-    }
-}
+    const token =
+      await getToken();
 
-async function applyRule(token, messageId, rule) {
-    var actions = rule.actions || rule;
 
-    if (actions.archive) {
-        await modifyMessage(
-            token,
-            messageId,
-            [],
-            ["INBOX"]
-        );
-    }
-
-    if (actions.markRead) {
-        await modifyMessage(
-            token,
-            messageId,
-            [],
-            ["UNREAD"]
-        );
-    }
-
-    if (actions.star) {
-        await modifyMessage(
-            token,
-            messageId,
-            ["STARRED"],
-            []
-        );
-    }
-
-    if (actions.neverSpam) {
-        await modifyMessage(
-            token,
-            messageId,
-            [],
-            ["SPAM"]
-        );
-    }
-
-    if (actions.important) {
-        await modifyMessage(
-            token,
-            messageId,
-            ["IMPORTANT"],
-            []
-        );
-    }
-
-    if (actions.notImportant) {
-        await modifyMessage(
-            token,
-            messageId,
-            [],
-            ["IMPORTANT"]
-        );
-    }
-
-    if (actions.delete) {
-        await modifyMessage(
-            token,
-            messageId,
-            ["TRASH"],
-            []
-        );
-    }
-}
-
-function sendProgress(processed, matched, total) {
-    scanStatus.processed = processed;
-    scanStatus.matched = matched;
-    scanStatus.total = total;
-
-    chrome.runtime.sendMessage(
-        {
-            action: "progress",
-            processed: processed,
-            matched: matched,
-            total: total
-        }
-    ).catch(function() {});
-}
-
-async function runRules() {
-    if (scanStatus.running) {
-        return;
-    }
-
-    scanStatus.running = true;
-    scanStatus.processed = 0;
-    scanStatus.matched = 0;
-    scanStatus.total = 0;
-
-    chrome.runtime.sendMessage(
-        {
-            action: "cleanStarted"
-        }
-    ).catch(function() {});
-
-    try {
-        var stored = await chrome.storage.local.get([
-            "cleanerRules",
-            "scannedMessageIds",
-            "lastScanTime",
-            "processedCount",
-            "filterCount"
-        ]);
-
-        var rules = stored.cleanerRules || [];
-        var scannedIds = stored.scannedMessageIds || [];
-        var lastScanTime = stored.lastScanTime || 0;
-
-        var previousProcessed =
-            stored.processedCount || 0;
-
-        var previousMatched =
-            stored.filterCount || 0;
-
-        var scannedSet = {};
-
-        for (var i = 0; i < scannedIds.length; i++) {
-            scannedSet[scannedIds[i]] = true;
-        }
-
-        var token = await getToken();
-
-        var messages = await getMessages(
-            token,
-            lastScanTime
-        );
-
-        var newMessages = [];
-
-        for (var j = 0; j < messages.length; j++) {
-            if (!scannedSet[messages[j].id]) {
-                newMessages.push(messages[j]);
-            }
-        }
-
-        scanStatus.total = newMessages.length;
-
-        sendProgress(
-            0,
-            0,
-            newMessages.length
-        );
-
-        var processedThisScan = 0;
-        var matchedThisScan = 0;
-
-        for (var k = 0; k < newMessages.length; k++) {
-            var messageId = newMessages[k].id;
-
-            try {
-                var message = await getMessage(
-                    token,
-                    messageId
-                );
-
-                var data = extractMessageData(message);
-
-                for (var r = 0; r < rules.length; r++) {
-                    var rule = rules[r];
-
-                    if (
-                        rule.enabled !== false &&
-                        ruleMatches(rule, data)
-                    ) {
-                        matchedThisScan++;
-
-                        await applyRule(
-                            token,
-                            messageId,
-                            rule
-                        );
-                    }
-                }
-
-                scannedIds.push(messageId);
-                scannedSet[messageId] = true;
-
-            } catch (messageError) {
-                console.error(
-                    "Error processing message:",
-                    messageId,
-                    messageError
-                );
-            }
-
-            processedThisScan++;
-
-            sendProgress(
-                processedThisScan,
-                matchedThisScan,
-                newMessages.length
-            );
-        }
-
-        var now = Date.now();
-
-        await chrome.storage.local.set({
-            scannedMessageIds: scannedIds,
-            lastScanTime: now,
-            processedCount:
-                previousProcessed + processedThisScan,
-            filterCount:
-                previousMatched + matchedThisScan,
-            lastRun: now,
-            lastError: null
-        });
-
-        chrome.runtime.sendMessage(
-            {
-                action: "cleanFinished",
-                processed: processedThisScan,
-                matched: matchedThisScan
-            }
-        ).catch(function() {});
-
-    } catch (error) {
-        console.error(
-            "Gmail Cleaner scan error:",
-            error
-        );
-
-        await chrome.storage.local.set({
-            lastError: error.message || String(error)
-        });
-
-        chrome.runtime.sendMessage(
-            {
-                action: "cleanError",
-                error: error.message || String(error)
-            }
-        ).catch(function() {});
-
-    } finally {
-        scanStatus.running = false;
-    }
-}
-
-function createAlarm(minutes) {
-    var interval = Number(minutes);
-
-    if (!interval || interval < 1) {
-        interval = 1;
-    }
-
-    chrome.alarms.clear(
-        "gmailCleaner",
-        function() {
-            chrome.alarms.create(
-                "gmailCleaner",
-                {
-                    delayInMinutes: interval,
-                    periodInMinutes: interval
-                }
-            );
-
-            chrome.storage.local.set({
-                autoCleanInterval: interval
-            });
-        }
+    await setStatus(
+      "Finding Gmail messages..."
     );
+
+
+    const messages =
+      await listAllMessages(
+        token
+      );
+
+
+    const data =
+      await chrome.storage.local.get(
+        ["rules"]
+      );
+
+
+    const rules =
+      data.rules || [];
+
+
+    await chrome.storage.local.set({
+      filterCount:
+        rules.length
+    });
+
+
+    if (!rules.length) {
+
+      await setStatus(
+        "No rules configured."
+      );
+
+      return {
+        success: true,
+        processed: 0
+      };
+    }
+
+
+    await setStatus(
+      `Found ${messages.length.toLocaleString()} messages`
+    );
+
+
+    const labels =
+      await getLabels(token);
+
+
+    let processed = 0;
+    let matched = 0;
+
+
+    for (
+      const messageRef of messages
+    ) {
+
+      const message =
+        await getMessage(
+          token,
+          messageRef.id
+        );
+
+
+      for (
+        const rule of rules
+      ) {
+
+        if (
+          matchesRule(
+            message,
+            rule
+          )
+        ) {
+
+          await applyRule(
+            token,
+            message,
+            rule,
+            labels
+          );
+
+          matched++;
+        }
+      }
+
+
+      processed++;
+
+
+      await chrome.storage.local.set({
+        processedCount:
+          BASE_COUNT +
+          processed
+      });
+
+
+      if (
+        processed % 25 === 0 ||
+        processed === messages.length
+      ) {
+
+        await setStatus(
+          `Working... ${processed.toLocaleString()} / ${messages.length.toLocaleString()}`
+        );
+      }
+    }
+
+
+    await setStatus(
+      `Finished — ${matched.toLocaleString()} matches`
+    );
+
+
+    return {
+      success: true,
+      processed: processed,
+      matched: matched
+    };
+
+
+  } catch (error) {
+
+    console.error(
+      "MailMaid error:",
+      error
+    );
+
+
+    const message =
+      error?.message ||
+      String(error);
+
+
+    await setStatus(
+      "Error"
+    );
+
+    await setError(
+      message
+    );
+
+
+    return {
+      error: message
+    };
+
+
+  } finally {
+
+    cleaning = false;
+  }
 }
 
-chrome.runtime.onInstalled.addListener(
-    function() {
-        chrome.storage.local.get(
-            ["autoClean", "autoCleanInterval"],
-            function(data) {
-                if (
-                    data.autoClean &&
-                    data.autoCleanInterval
-                ) {
-                    createAlarm(
-                        data.autoCleanInterval
-                    );
-                }
-            }
-        );
-    }
-);
-
-chrome.runtime.onStartup.addListener(
-    function() {
-        chrome.storage.local.get(
-            ["autoClean", "autoCleanInterval"],
-            function(data) {
-                if (
-                    data.autoClean &&
-                    data.autoCleanInterval
-                ) {
-                    createAlarm(
-                        data.autoCleanInterval
-                    );
-                }
-            }
-        );
-    }
-);
-
-chrome.alarms.onAlarm.addListener(
-    function(alarm) {
-        if (alarm.name !== "gmailCleaner") {
-            return;
-        }
-
-        chrome.storage.local.set({
-            nextScanTime: Date.now() +
-                (
-                    Number(
-                        alarm.periodInMinutes || 1
-                    ) *
-                    60 *
-                    1000
-                )
-        });
-
-        runRules();
-    }
-);
 
 chrome.runtime.onMessage.addListener(
-    function(message, sender, sendResponse) {
-        if (!message || !message.action) {
-            return;
-        }
+  (
+    message,
+    sender,
+    sendResponse
+  ) => {
 
-        if (message.action === "cleanNow") {
-            runRules();
+    if (
+      message.type ===
+      "CLEAN_NOW"
+    ) {
 
-            sendResponse({
-                ok: true
-            });
+      cleanGmail()
+        .then(result => {
+          sendResponse(result);
+        })
+        .catch(error => {
 
-            return true;
-        }
+          sendResponse({
+            error:
+              error.message
+          });
 
-        if (message.action === "start") {
-            createAlarm(
-                message.interval || 1
-            );
+        });
 
-            chrome.storage.local.set({
-                autoClean: true,
-                autoCleanInterval:
-                    Number(message.interval || 1)
-            });
 
-            sendResponse({
-                ok: true
-            });
-
-            return true;
-        }
-
-        if (message.action === "stop") {
-            chrome.alarms.clear(
-                "gmailCleaner",
-                function() {
-                    chrome.storage.local.set({
-                        autoClean: false,
-                        nextScanTime: null
-                    });
-
-                    sendResponse({
-                        ok: true
-                    });
-                }
-            );
-
-            return true;
-        }
-
-        if (message.action === "getStatus") {
-            chrome.storage.local.get(
-                [
-                    "autoClean",
-                    "autoCleanInterval",
-                    "nextScanTime",
-                    "lastRun",
-                    "lastScanTime",
-                    "processedCount",
-                    "filterCount",
-                    "lastError"
-                ],
-                function(data) {
-                    sendResponse({
-                        ok: true,
-                        running: scanStatus.running,
-                        processed: scanStatus.processed,
-                        matched: scanStatus.matched,
-                        total: scanStatus.total,
-                        autoClean:
-                            data.autoClean || false,
-                        autoCleanInterval:
-                            data.autoCleanInterval || 1,
-                        nextScanTime:
-                            data.nextScanTime || null,
-                        lastRun:
-                            data.lastRun || null,
-                        lastScanTime:
-                            data.lastScanTime || null,
-                        processedCount:
-                            data.processedCount || 0,
-                        filterCount:
-                            data.filterCount || 0,
-                        lastError:
-                            data.lastError || null
-                    });
-                }
-            );
-
-            return true;
-        }
+      return true;
     }
+
+
+    if (
+      message.type ===
+      "UPDATE_ALARM"
+    ) {
+
+      setupAlarm()
+        .then(() => {
+
+          sendResponse({
+            success: true
+          });
+
+        });
+
+
+      return true;
+    }
+  }
 );
 
-console.log(
-    "Gmail Cleaner background loaded"
+
+async function setupAlarm() {
+
+  const data =
+    await chrome.storage.local.get(
+      [
+        "interval",
+        "autoClean"
+      ]
+    );
+
+
+  await chrome.alarms.clear(
+    ALARM_NAME
+  );
+
+
+  if (!data.autoClean) {
+    return;
+  }
+
+
+  const minutes =
+    Number(data.interval) || 1;
+
+
+  chrome.alarms.create(
+    ALARM_NAME,
+    {
+      delayInMinutes: minutes,
+      periodInMinutes: minutes
+    }
+  );
+}
+
+
+chrome.alarms.onAlarm.addListener(
+  alarm => {
+
+    if (
+      alarm.name ===
+      ALARM_NAME
+    ) {
+
+      cleanGmail();
+    }
+  }
 );
+
+
+chrome.runtime.onInstalled.addListener(
+  async () => {
+
+    const data =
+      await chrome.storage.local.get(
+        [
+          "interval",
+          "autoClean",
+          "processedCount"
+        ]
+      );
+
+
+    const updates = {};
+
+
+    if (!data.interval) {
+      updates.interval = 1;
+    }
+
+
+    if (
+      typeof data.autoClean !==
+      "boolean"
+    ) {
+
+      updates.autoClean = false;
+    }
+
+
+    if (
+      typeof data.processedCount !==
+      "number"
+    ) {
+
+      updates.processedCount =
+        BASE_COUNT;
+    }
+
+
+    if (
+      Object.keys(updates).length
+    ) {
+
+      await chrome.storage.local.set(
+        updates
+      );
+    }
+
+
+    await setupAlarm();
+  }
+);
+
+
+setupAlarm();
